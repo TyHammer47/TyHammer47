@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  CLIENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CLIENT
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(CLIENT)
+  createdAt    DateTime @default(now())
+
+  company    Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId  String?
+
+  ticketsCreated Ticket[]        @relation("TicketCreatedBy")
+  comments       TicketComment[]
+
+  @@index([companyId])
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  domain      String?
+  contactName String?
+  contactEmail String?
+  contactPhone String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  users   User[]
+  tickets Ticket[]
+  tasks   Task[]
+}
+
+model Ticket {
+  id          String         @id @default(cuid())
+  number      Int            @default(autoincrement()) @unique
+  subject     String
+  description String
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+
+  createdBy   User   @relation("TicketCreatedBy", fields: [createdById], references: [id])
+  createdById String
+
+  comments TicketComment[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model TicketComment {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId String
+
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId String
+
+  @@index([ticketId])
+}
+
+model Task {
+  id        String    @id @default(cuid())
+  title     String
+  done      Boolean   @default(false)
+  dueDate   DateTime?
+  position  Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+
+  @@index([companyId])
+}
