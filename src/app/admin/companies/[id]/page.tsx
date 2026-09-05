@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { StatusBadge, PriorityBadge } from "@/components/Badges";
+import { StatusBadge, PriorityBadge, ProjectStatusBadge } from "@/components/Badges";
+import { ProgressBar } from "@/components/ProgressBar";
 import { NewTicketForm } from "./NewTicketForm";
 import { NewTaskForm } from "./NewTaskForm";
+import { NewProjectForm } from "./NewProjectForm";
 import { AddClientUserForm } from "./AddClientUserForm";
+import { ResetPasswordButton } from "./ResetPasswordButton";
 import { toggleTaskAction, deleteTaskAction } from "@/app/admin/actions";
 
 export default async function CompanyDetailPage({ params }: PageProps<"/admin/companies/[id]">) {
@@ -16,6 +19,10 @@ export default async function CompanyDetailPage({ params }: PageProps<"/admin/co
       users: { where: { role: "CLIENT" }, orderBy: { createdAt: "asc" } },
       tickets: { orderBy: { createdAt: "desc" } },
       tasks: { orderBy: [{ done: "asc" }, { position: "asc" }] },
+      projects: {
+        orderBy: { createdAt: "desc" },
+        include: { timeEntries: { select: { hours: true } } },
+      },
     },
   });
 
@@ -23,6 +30,8 @@ export default async function CompanyDetailPage({ params }: PageProps<"/admin/co
 
   const openTickets = company.tickets.filter((t) => t.status !== "RESOLVED" && t.status !== "CLOSED");
   const closedTickets = company.tickets.filter((t) => t.status === "RESOLVED" || t.status === "CLOSED");
+  const activeProjects = company.projects.filter((p) => p.status !== "COMPLETED");
+  const completedProjects = company.projects.filter((p) => p.status === "COMPLETED");
 
   return (
     <div>
@@ -53,6 +62,37 @@ export default async function CompanyDetailPage({ params }: PageProps<"/admin/co
 
       <div className="grid gap-8 lg:grid-cols-[1.6fr_1fr]">
         <div className="flex flex-col gap-10">
+          {/* Projects */}
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Projects</h2>
+              <NewProjectForm companyId={company.id} />
+            </div>
+            <div className="flex flex-col gap-3">
+              {activeProjects.length === 0 && completedProjects.length === 0 && (
+                <p className="panel px-6 py-8 text-center text-sm text-[var(--text-3)]">
+                  No larger projects yet. Use this for multi-step work — migrations, builds,
+                  rollouts — separate from one-off tickets.
+                </p>
+              )}
+              {activeProjects.map((p) => (
+                <ProjectRow key={p.id} project={p} />
+              ))}
+              {completedProjects.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-sm text-[var(--text-3)] hover:text-[var(--text)]">
+                    {completedProjects.length} completed project{completedProjects.length === 1 ? "" : "s"}
+                  </summary>
+                  <div className="mt-3 flex flex-col gap-3">
+                    {completedProjects.map((p) => (
+                      <ProjectRow key={p.id} project={p} />
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          </section>
+
           {/* Tickets */}
           <section>
             <h2 className="mb-4 text-lg font-semibold">Tickets</h2>
@@ -153,11 +193,12 @@ export default async function CompanyDetailPage({ params }: PageProps<"/admin/co
             <h2 className="mb-4 text-lg font-semibold">Client logins</h2>
             <div className="flex flex-col gap-3">
               {company.users.map((u) => (
-                <div key={u.id} className="panel flex items-center justify-between px-5 py-4">
+                <div key={u.id} className="panel flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="text-sm font-medium text-[var(--text)]">{u.name}</div>
                     <div className="text-xs text-[var(--text-3)]">{u.email}</div>
                   </div>
+                  <ResetPasswordButton userId={u.id} />
                 </div>
               ))}
               <AddClientUserForm companyId={company.id} />
@@ -193,6 +234,46 @@ function TicketRow({
       <span className="w-full text-xs text-[var(--text-3)] sm:w-auto">
         {new Date(ticket.createdAt).toLocaleDateString()}
       </span>
+    </Link>
+  );
+}
+
+function ProjectRow({
+  project,
+}: {
+  project: {
+    id: string;
+    name: string;
+    status: import("@/generated/prisma/enums").ProjectStatus;
+    progressPercent: number;
+    estimatedHours: number | null;
+    targetDate: Date | null;
+    timeEntries: { hours: number }[];
+  };
+}) {
+  const totalHours = project.timeEntries.reduce((sum, e) => sum + e.hours, 0);
+
+  return (
+    <Link href={`/admin/projects/${project.id}`} className="panel panel-hover flex flex-col gap-3 px-5 py-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="flex-1 font-medium text-[var(--text)]">{project.name}</span>
+        <ProjectStatusBadge status={project.status} />
+        {project.targetDate && (
+          <span className="text-xs text-[var(--text-3)]">
+            Due {new Date(project.targetDate).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <ProgressBar percent={project.progressPercent} />
+        </div>
+        <span className="text-xs font-semibold text-[var(--blue-light)]">{project.progressPercent}%</span>
+        <span className="text-xs text-[var(--text-3)]">
+          {totalHours}
+          {project.estimatedHours ? ` / ${project.estimatedHours}h` : "h logged"}
+        </span>
+      </div>
     </Link>
   );
 }

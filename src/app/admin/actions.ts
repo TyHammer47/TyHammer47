@@ -4,9 +4,9 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { hashPassword } from "@/lib/auth";
+import { hashPassword, generateTempPassword } from "@/lib/auth";
 import { requireAdmin } from "@/lib/session";
-import type { TicketStatus, TicketPriority } from "@/generated/prisma/enums";
+import type { TicketStatus, TicketPriority, ProjectStatus } from "@/generated/prisma/enums";
 
 export type ActionState = { error?: string };
 
@@ -219,4 +219,141 @@ export async function deleteTaskAction(taskId: string) {
   await requireAdmin();
   const task = await prisma.task.delete({ where: { id: taskId } });
   revalidatePath(`/admin/companies/${task.companyId}`);
+}
+
+export async function adminResetClientPasswordAction(
+  userId: string,
+): Promise<{ password: string } | { error: string }> {
+  await requireAdmin();
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.role !== "CLIENT") {
+    return { error: "Client account not found." };
+  }
+
+  const tempPassword = generateTempPassword();
+  const passwordHash = await hashPassword(tempPassword);
+
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+
+  if (user.companyId) {
+    revalidatePath(`/admin/companies/${user.companyId}`);
+  }
+
+  return { password: tempPassword };
+}
+
+const projectSchema = z.object({
+  companyId: z.string().min(1),
+  name: z.string().trim().min(1, "Project name is required."),
+  description: z.string().trim().nullable().optional(),
+  estimatedHours: z.string().trim().nullable().optional(),
+  startDate: z.string().trim().nullable().optional(),
+  targetDate: z.string().trim().nullable().optional(),
+});
+
+export async function createProjectAction(_prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsed = projectSchema.safeParse({
+    companyId: formData.get("companyId"),
+    name: formData.get("name"),
+    description: formData.get("description"),
+    estimatedHours: formData.get("estimatedHours"),
+    startDate: formData.get("startDate"),
+    targetDate: formData.get("targetDate"),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  const estimatedHours = parsed.data.estimatedHours ? Number(parsed.data.estimatedHours) : null;
+  if (estimatedHours !== null && (Number.isNaN(estimatedHours) || estimatedHours < 0)) {
+    return { error: "Estimated hours must be a positive number." };
+  }
+
+  await prisma.project.create({
+    data: {
+      companyId: parsed.data.companyId,
+      name: parsed.data.name,
+      description: parsed.data.description || null,
+      estimatedHours,
+      startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : null,
+      targetDate: parsed.data.targetDate ? new Date(parsed.data.targetDate) : null,
+    },
+  });
+
+  revalidatePath(`/admin/companies/${parsed.data.companyId}`);
+  return {};
+}
+
+export async function updateProjectStatusAction(projectId: string, status: ProjectStatus) {
+  await requireAdmin();
+  const project = await prisma.project.update({ where: { id: projectId }, data: { status } });
+  revalidatePath(`/admin/projects/${projectId}`);
+  revalidatePath(`/admin/companies/${project.companyId}`);
+}
+
+export async function updateProjectProgressAction(projectId: string, progressPercent: number) {
+  await requireAdmin();
+  const clamped = Math.max(0, Math.min(100, Math.round(progressPercent)));
+  const project = await prisma.project.update({
+    where: { id: projectId },
+    data: { progressPercent: clamped },
+  });
+  revalidatePath(`/admin/projects/${projectId}`);
+  revalidatePath(`/admin/companies/${project.companyId}`);
+}
+
+export async function deleteProjectAction(projectId: string) {
+  await requireAdmin();
+  const project = await prisma.project.delete({ where: { id: projectId } });
+  revalidatePath(`/admin/companies/${project.companyId}`);
+  redirect(`/admin/companies/${project.companyId}`);
+}
+
+const timeEntrySchema = z.object({
+  projectId: z.string().min(1),
+  hours: z.string().trim().min(1, "Hours worked is required."),
+  workDate: z.string().trim().optional(),
+  note: z.string().trim().optional(),
+});
+
+export async function addTimeEntryAction(_prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireAdmin();
+
+  const parsed = timeEntrySchema.safeParse({
+    projectId: formData.get("projectId"),
+    hours: formData.get("hours"),
+    workDate: formData.get("workDate"),
+    note: formData.get("note"),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  const hours = Number(parsed.data.hours);
+  if (Number.isNaN(hours) || hours <= 0) {
+    return { error: "Hours must be a positive number." };
+  }
+
+  await prisma.timeEntry.create({
+    data: {
+      projectId: parsed.data.projectId,
+      hours,
+      note: parsed.data.note || null,
+      workDate: parsed.data.workDate ? new Date(parsed.data.workDate) : new Date(),
+    },
+  });
+
+  revalidatePath(`/admin/projects/${parsed.data.projectId}`);
+  return {};
+}
+
+export async function deleteTimeEntryAction(timeEntryId: string) {
+  await requireAdmin();
+  const entry = await prisma.timeEntry.delete({ where: { id: timeEntryId } });
+  revalidatePath(`/admin/projects/${entry.projectId}`);
 }

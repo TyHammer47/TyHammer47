@@ -6,11 +6,12 @@ main marketing site (dark theme, blue accents, serif-italic headings).
 There are two sides to the app:
 
 - **Engineer console** (`/admin`) — you sign in here. See every client company you support,
-  their open/closed tickets, reply to tickets, and run a per-client task tracker (a simple
-  checklist for ongoing work — replacing a drive, a scheduled migration, etc).
+  their open/closed tickets, reply to tickets, run a per-client task tracker (a simple
+  checklist for ongoing work), and track larger **projects** per client with a progress bar,
+  an hours-logged-vs-estimated budget, and a weekly hours breakdown chart.
 - **Client portal** (`/portal`) — a login you create for each client contact. They can only
-  see their own company's tickets, open new ones, and reply. They never see other companies
-  or your internal task tracker.
+  see their own company's tickets and projects (read-only progress + hours), open new tickets,
+  and reply. They never see other companies or your internal task tracker.
 
 ## Tech stack
 
@@ -56,13 +57,19 @@ There are two sides to the app:
 - **Add a client**: Engineer console → *New company*. Fill in their name, website, and contact
   info.
 - **Give a client portal access**: open that company → *Add client login* → set them an email
-  and a temporary password (tell them to note it down; there's no self-service password reset
-  yet, so you'd update it by hand in the database or add a reset flow later if you want one).
+  and a temporary password. If they ever forget it, either they use *Forgot password?* on the
+  sign-in page (self-service, emailed to them), or you click *Reset password* next to their
+  name on the company page to issue a new temporary one instantly.
 - **Log a ticket**: either you open one from the company page, or the client opens one from
   their portal. Either side can reply; you control status (Open → In Progress → Waiting on
   Client → Resolved/Closed) and priority from the ticket page.
 - **Track ongoing work per client**: the *Task tracker* on each company page is a simple
   checklist only you see — for multi-step or recurring work that isn't tied to a single ticket.
+- **Run a larger project for a client**: open that company → *New project*. Set a name,
+  estimate, and target date. From the project page you control status and drag a progress
+  slider, log hours as you work (with a note), and see a weekly hours chart and
+  budget-vs-actual bar. The client sees a read-only version of the same page under *Projects*
+  in their portal — good for status updates without a phone call.
 
 ## Database changes
 
@@ -117,26 +124,51 @@ If you'd rather host this somewhere other than Vercel, any Node hosting that sup
 environment variables, run `npm run build && npm run start`, and point DNS at whatever address
 that host gives you.
 
+### Turning on real "forgot password" emails
+
+Without any email configured, a password reset link is logged to the server console instead of
+emailed — fine for local development, not something you want in production. To send real emails:
+
+1. Create a free [Resend](https://resend.com) account.
+2. For quick testing, you can send from their shared `onboarding@resend.dev` address with no
+   setup — that's the default in `.env.example`. To send from your own domain (e.g.
+   `support@hammeritsolution.com`) once you own it, verify that domain in Resend's dashboard
+   (a few DNS records, same place you'd add the Vercel domain records) and set `EMAIL_FROM`
+   accordingly.
+3. Copy your Resend API key into `RESEND_API_KEY` in your environment variables (locally in
+   `.env`, in production in Vercel's project settings).
+
+That's it — `src/lib/email.ts` picks it up automatically once the key is set.
+
 ## Security notes
 
 - Passwords are hashed with bcrypt (cost factor 12) — never stored in plain text.
 - Sessions are signed JWTs in an `httpOnly`, `sameSite=lax` cookie — not readable by
   client-side JavaScript.
-- Clients can only ever read or write tickets that belong to their own company; this is
-  enforced on the server for every query, not just hidden in the UI.
+- Clients can only ever read or write tickets and projects that belong to their own company;
+  this is enforced on the server for every query, not just hidden in the UI.
+- Password reset tokens are random 32-byte values, stored only as a SHA-256 hash (never the
+  raw token), expire after 1 hour, and are single-use. The "forgot password" form always
+  responds the same way whether or not the email has an account, so it can't be used to find
+  out who has a login.
 - Change `SESSION_SECRET` and the seeded admin password before you rely on this in production —
   the values in `.env.example` are placeholders only.
 
 ## Project structure
 
 ```
-prisma/schema.prisma       Data model (User, Company, Ticket, TicketComment, Task)
+prisma/schema.prisma       Data model (User, Company, Ticket, TicketComment, Task, Project,
+                            TimeEntry, PasswordResetToken)
 prisma/seed.ts             Creates/updates the admin account from env vars
-src/lib/auth.ts            Password hashing + session cookie signing/verification
+src/lib/auth.ts            Password hashing, session + reset-token signing/verification
 src/lib/session.ts         Server-side helpers to read the current user (requireAdmin, etc)
+src/lib/email.ts           Sends password-reset emails via Resend (or logs the link in dev)
+src/lib/reports.ts         Groups logged hours by week for the project charts
 src/proxy.ts               Route protection (Next.js "proxy", formerly middleware)
-src/app/login/             Sign-in page + server action
-src/app/admin/             Engineer console (companies, tickets, task tracker)
-src/app/portal/            Client-facing portal (their tickets only)
+src/app/login/             Sign-in page + server action ("Forgot password?" links out)
+src/app/forgot-password/   Request a reset link
+src/app/reset-password/    Set a new password from a reset link
+src/app/admin/             Engineer console (companies, tickets, task tracker, projects)
+src/app/portal/            Client-facing portal (their tickets + read-only projects)
 src/app/globals.css        Design tokens matching the marketing site
 ```

@@ -1,7 +1,22 @@
 import "server-only";
 import bcrypt from "bcryptjs";
+import { randomBytes, createHash } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+
+export const PASSWORD_RESET_DURATION_SECONDS = 60 * 60; // 1 hour
+
+export function generateResetToken() {
+  return randomBytes(32).toString("hex");
+}
+
+export function hashResetToken(rawToken: string) {
+  return createHash("sha256").update(rawToken).digest("hex");
+}
+
+export function generateTempPassword() {
+  return randomBytes(9).toString("base64url");
+}
 
 const SESSION_COOKIE = "th_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 14; // 14 days

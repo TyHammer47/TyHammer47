@@ -59,6 +59,13 @@ export default function LoginPage() {
               <label htmlFor="password">Password</label>
             </div>
 
+            <Link
+              href="/forgot-password"
+              className="-mt-1 self-end text-sm text-[var(--text-3)] hover:text-[var(--blue-light)]"
+            >
+              Forgot password?
+            </Link>
+
             {state.error && (
               <p className="rounded-[var(--radius-s)] border border-[rgba(248,113,113,.35)] bg-[rgba(248,113,113,.1)] px-4 py-3 text-sm text-[#fca5a5]">
                 {state.error}

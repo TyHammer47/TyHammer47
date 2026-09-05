@@ -8,10 +8,12 @@ export default async function AdminDashboard() {
       _count: { select: { tickets: true, tasks: true } },
       tickets: { where: { status: { notIn: ["RESOLVED", "CLOSED"] } }, select: { id: true } },
       tasks: { where: { done: false }, select: { id: true } },
+      projects: { where: { status: { not: "COMPLETED" } }, select: { id: true, progressPercent: true } },
     },
   });
 
   const totalOpen = companies.reduce((sum, c) => sum + c.tickets.length, 0);
+  const totalActiveProjects = companies.reduce((sum, c) => sum + c.projects.length, 0);
 
   return (
     <div>
@@ -27,7 +29,7 @@ export default async function AdminDashboard() {
         </Link>
       </div>
 
-      <div className="mb-10 grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="mb-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="panel px-6 py-5">
           <div className="serif-italic text-[1.8rem]">{companies.length}</div>
           <div className="text-xs uppercase tracking-[.12em] text-[var(--text-3)]">Companies</div>
@@ -41,6 +43,10 @@ export default async function AdminDashboard() {
             {companies.reduce((sum, c) => sum + c.tasks.length, 0)}
           </div>
           <div className="text-xs uppercase tracking-[.12em] text-[var(--text-3)]">Open tasks</div>
+        </div>
+        <div className="panel px-6 py-5">
+          <div className="serif-italic text-[1.8rem]">{totalActiveProjects}</div>
+          <div className="text-xs uppercase tracking-[.12em] text-[var(--text-3)]">Active projects</div>
         </div>
       </div>
 
@@ -60,13 +66,19 @@ export default async function AdminDashboard() {
                 <h2 className="text-lg font-semibold text-[var(--text)]">{c.name}</h2>
                 {c.domain && <p className="mt-1 text-sm text-[var(--text-3)]">{c.domain}</p>}
               </div>
-              <div className="mt-auto flex items-center gap-4 border-t border-[var(--line)] pt-4 text-sm">
+              <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--line)] pt-4 text-sm">
                 <span className="text-[var(--text-2)]">
                   <b className="text-[var(--blue-light)]">{c.tickets.length}</b> open tickets
                 </span>
                 <span className="text-[var(--text-2)]">
                   <b className="text-[var(--blue-light)]">{c.tasks.length}</b> tasks
                 </span>
+                {c.projects.length > 0 && (
+                  <span className="text-[var(--text-2)]">
+                    <b className="text-[var(--blue-light)]">{c.projects.length}</b> active project
+                    {c.projects.length === 1 ? "" : "s"}
+                  </span>
+                )}
               </div>
             </Link>
           ))}

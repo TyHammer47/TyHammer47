@@ -1,4 +1,4 @@
-import type { TicketStatus, TicketPriority } from "@/generated/prisma/enums";
+import type { TicketStatus, TicketPriority, ProjectStatus } from "@/generated/prisma/enums";
 
 const STATUS_STYLES: Record<TicketStatus, { label: string; color: string; bg: string; border: string }> = {
   OPEN: { label: "Open", color: "#60a5fa", bg: "rgba(59,130,246,.12)", border: "rgba(59,130,246,.3)" },
@@ -40,4 +40,24 @@ export function PriorityBadge({ priority }: { priority: TicketPriority }) {
   );
 }
 
-export { STATUS_STYLES, PRIORITY_STYLES };
+const PROJECT_STATUS_STYLES: Record<ProjectStatus, { label: string; color: string; bg: string; border: string }> = {
+  PLANNING: { label: "Planning", color: "#c084fc", bg: "rgba(192,132,252,.12)", border: "rgba(192,132,252,.3)" },
+  IN_PROGRESS: { label: "In Progress", color: "#60a5fa", bg: "rgba(59,130,246,.12)", border: "rgba(59,130,246,.3)" },
+  ON_HOLD: { label: "On Hold", color: "#fbbf24", bg: "rgba(251,191,36,.12)", border: "rgba(251,191,36,.3)" },
+  COMPLETED: { label: "Completed", color: "#34d399", bg: "rgba(52,211,153,.12)", border: "rgba(52,211,153,.3)" },
+};
+
+export function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
+  const s = PROJECT_STATUS_STYLES[status];
+  return (
+    <span
+      className="pill"
+      style={{ color: s.color, background: s.bg, border: `1px solid ${s.border}` }}
+    >
+      <span className="pill-dot" style={{ background: s.color }} />
+      {s.label}
+    </span>
+  );
+}
+
+export { STATUS_STYLES, PRIORITY_STYLES, PROJECT_STATUS_STYLES };
